@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prediction & Simulation Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d0208;
+            --text-color: #00ff41;
+            --accent-color: #ff00ff;
+            --error-color: #ff0000;
+            --glow-color: rgba(0, 255, 65, 0.75);
+            --font-mono: 'Courier New', Courier, monospace;
+            --border-radius: 0px;
+            --border-style: 1px solid var(--text-color);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-mono);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #matrix-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+       .app-container {
+            width: 95%;
+            max-width: 900px;
+            height: 95vh;
+            max-height: 700px;
+            border: var(--border-style);
+            box-shadow: 0 0 15px var(--glow-color);
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        /* Sections */
+       .app-section {
+            width: 100%;
+            padding: 15px;
+            display: none; /* Hidden by default */
+        }
+
+       .app-section.active {
+            display: block;
+        }
+
+        /* Control Panel */
+        #control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        #control-panel h1 {
+            color: var(--accent-color);
+            text-shadow: 0 0 5px var(--accent-color);
+            text-align: center;
+        }
+
+       .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+       .input-group label {
+            font-size: 1.1em;
+        }
+
+       .input-group input,
+       .input-group textarea {
+            background-color: transparent;
+            border: var(--border-style);
+            color: var(--text-color);
+            font-family: var(--font-mono);
+            padding: 10px;
+            font-size: 1em;
+            outline: none;
+        }
+
+       .input-group input:focus,
+       .input-group textarea:focus {
+            box-shadow: 0 0 10px var(--glow-color);
+        }
+
+       .input-group textarea {
+            height: 150px;
+            resize: vertical;
+        }
+
+        #initiate-btn {
+            background-color: var(--text-color);
+            color: var(--bg-color);
+            border: none;
+            padding: 15px;
+            font-family: var(--font-mono);
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #initiate-btn:hover {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            border: var(--border-style);
+            box-shadow: 0 0 10px var(--glow-color);
+        }
+
+        /* Terminal Display */
+        #terminal-display {
+            flex-grow: 1;
+            overflow-y: auto;
+            font-size: 0.9em;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        #terminal-output.terminal-line {
+            opacity: 0;
+            animation: fadeIn 0.1s forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+       .terminal-line.color-red { color: var(--error-color); }
+       .terminal-line.color-accent { color: var(--accent-color); }
+       .terminal-line.color-yellow { color: #f3f99d; }
+
+       .progress-bar-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+       .progress-bar {
+            width: 200px;
+            height: 1em;
+            border: 1px solid var(--text-color);
+            background-color: #111;
+        }
+
+       .progress-bar-fill {
+            width: 0%;
+            height: 100%;
+            background-color: var(--text-color);
+            transition: width 0.1s linear;
+        }
+
+        /* Results Dashboard */
+        #results-dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto 1fr;
+            gap: 20px;
+            height: 100%;
+        }
+
+       .result-card {
+            border: var(--border-style);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        #primary-prediction {
+            grid-column: 1 / 2;
+            grid-row: 1 / 2;
+        }
+        
+        #confidence-score {
+            grid-column: 2 / 3;
+            grid-row: 1 / 2;
+        }
+
+       .chart-container {
+            grid-column: 1 / 3;
+            grid-row: 2 / 3;
+            border: var(--border-style);
+            padding: 15px;
+        }
+
+       .result-card h3 {
+            color: var(--accent-color);
+            margin-bottom: 10px;
+        }
+
+        #prediction-output {
+            font-size: 3em;
+            font-weight: bold;
+        }
+
+        #confidence-output {
+            font-size: 3em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix-canvas"></canvas>
+    <div class="app-container">
+        <section id="control-panel" class="app-section active">
+            <h1>Hacker-Analyst Interface</h1>
+            <div class="input-group">
+                <label for="period-input">Target Period Number:</label>
+                <input type="number" id="period-input" placeholder="e.g., 20240315001">
+            </div>
+            <div class="input-group">
+                <label for="history-input">Paste Historical Data (Format: Period,Color,Number):</label>
+                <textarea id="history-input" placeholder="20240315000,Red,7&#10;20240314999,Green,2&#10;20240314998,Violet,9"></textarea>
+            </div>
+            <button id="initiate-btn">Initiate Sequence</button>
+        </section>
+
+        <section id="terminal-display" class="app-section">
+            <div id="terminal-output"></div>
+        </section>
+
+        <section id="results-dashboard" class="app-section">
+            <div id="primary-prediction" class="result-card">
+                <h3>Decrypted Prediction</h3>
+                <p id="prediction-output">--</p>
+            </div>
+            <div id="confidence-score" class="result-card">
+                <h3>Confidence Score</h3>
+                <p id="confidence-output">--%</p>
+            </div>
+            <div class="chart-container">
+                <canvas id="analysis-charts"></canvas>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- MATRIX EFFECT ---
+            const canvas = document.getElementById('matrix-canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890@#$%^&*()*&^%+-/~{[|`]}';
+            const fontSize = 16;
+            const columns = canvas.width / fontSize;
+            const drops = Array(Math.floor(columns)).fill(1);
+
+            function drawMatrix() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim();
+                ctx.font = `${fontSize}px ${getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim()}`;
+
+                for (let i = 0; i < drops.length; i++) {
+                    const text = letters[Math.floor(Math.random() * letters.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+            }
+            setInterval(drawMatrix, 33);
+
+            // --- APPLICATION LOGIC ---
+            const sections = {
+                control: document.getElementById('control-panel'),
+                terminal: document.getElementById('terminal-display'),
+                results: document.getElementById('results-dashboard'),
+            };
+            const terminalOutput = document.getElementById('terminal-output');
+            const initiateBtn = document.getElementById('initiate-btn');
+            const periodInput = document.getElementById('period-input');
+            const historyInput = document.getElementById('history-input');
+            const predictionOutput = document.getElementById('prediction-output');
+            const confidenceOutput = document.getElementById('confidence-output');
+            let analysisChart = null;
+
+            const state = {
+                currentView: 'control',
+                history:,
+            };
+
+            // --- UI CONTROLLER ---
+            const uiController = {
+                switchView(viewName) {
+                    Object.values(sections).forEach(sec => sec.classList.remove('active'));
+                    if (sections[viewName]) {
+                        sections[viewName].classList.add('active');
+                        state.currentView = viewName;
+                    }
+                },
+                clearTerminal() {
+                    terminalOutput.innerHTML = '';
+                },
+                addTerminalLine(text, colorClass = '') {
+                    const line = document.createElement('div');
+                    line.className = `terminal-line ${colorClass}`;
+                    terminalOutput.appendChild(line);
+                    return line;
+                },
+                renderResults(prediction, confidence, history) {
+                    predictionOutput.textContent = `${prediction.color} - ${prediction.number}`;
+                    confidenceOutput.textContent = `${confidence.toFixed(0)}%`;
+                    
+                    const colorMap = { Red: '#ff0000', Green: '#00ff41', Violet: '#ff00ff' };
+                    predictionOutput.style.color = colorMap[prediction.color] |
+
+| 'white';
+
+                    this.renderCharts(history);
+                },
+                renderCharts(history) {
+                    if (analysisChart) {
+                        analysisChart.destroy();
+                    }
+                    if (history.length === 0) return;
+
+                    const chartCtx = document.getElementById('analysis-charts').getContext('2d');
+                    
+                    const labels = history.map(h => h.period).slice(-20);
+                    const colorData = history.map(h => {
+                        if (h.color === 'Red') return 1;
+                        if (h.color === 'Green') return 2;
+                        if (h.color === 'Violet') return 3;
+                        return 0;
+                    }).slice(-20);
+
+                    const colorCounts = history.reduce((acc, h) => {
+                        acc[h.color] = (acc[h.color] |
+
+| 0) + 1;
+                        return acc;
+                    }, {});
+
+                    analysisChart = new Chart(chartCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: Object.keys(colorCounts),
+                            datasets: [{
+                                label: 'Color Frequency',
+                                data: Object.values(colorCounts),
+                                backgroundColor: [
+                                    'rgba(255, 0, 0, 0.7)',
+                                    'rgba(0, 255, 65, 0.7)',
+                                    'rgba(255, 0, 255, 0.7)'
+                                ],
+                                borderColor: [
+                                    '#ff0000',
+                                    '#00ff41',
+                                    '#ff00ff'
+                                ],
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Historical Data Analysis',
+                                    color: 'white',
+                                    font: { size: 16, family: getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() }
+                                },
+                                legend: {
+                                    labels: { color: 'white' }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: { color: 'white' },
+                                    grid: { color: 'rgba(255,255,255,0.2)' }
+                                },
+                                x: {
+                                    ticks: { color: 'white' },
+                                    grid: { color: 'rgba(255,255,255,0.2)' }
+                                }
+                            }
+                        }
+                    });
+                }
+            };
+
+            // --- TERMINAL ANIMATOR ---
+            const terminalAnimator = {
+                sleep(ms) {
+                    return new Promise(resolve => setTimeout(resolve, ms));
+                },
+                async typeLine(lineElement, text, speed = 20) {
+                    for (let i = 0; i < text.length; i++) {
+                        lineElement.textContent += text.charAt(i);
+                        await this.sleep(speed);
+                    }
+                },
+                async renderProgressBar(duration, label) {
+                    const container = document.createElement('div');
+                    container.className = 'progress-bar-container';
+                    const bar = document.createElement('div');
+                    bar.className = 'progress-bar';
+                    const fill = document.createElement('div');
+                    fill.className = 'progress-bar-fill';
+                    bar.appendChild(fill);
+                    const labelSpan = document.createElement('span');
+                    labelSpan.textContent = label;
+                    container.appendChild(bar);
+                    container.appendChild(labelSpan);
+                    terminalOutput.appendChild(container);
+
+                    const steps = duration * 10;
+                    for (let i = 0; i <= steps; i++) {
+                        fill.style.width = `${(i / steps) * 100}%`;
+                        await this.sleep(100);
+                    }
+                    terminalOutput.appendChild(document.createElement('br'));
+                },
+                async runAnimation() {
+                    uiController.clearTerminal();
+                    const script =;
+
+                    for (const step of script) {
+                        const line = uiController.addTerminalLine('', step.color |
+
+| '');
+                        await this.typeLine(line, step.text);
+                        if (step.progress) {
+                            await this.renderProgressBar(step.progress.duration, step.progress.label);
+                        }
+                        await this.sleep(step.delay);
+                    }
+                }
+            };
+
+            // --- PREDICTION ENGINE ---
+            const predictionEngine = {
+                parseHistory(historyText) {
+                    const lines = historyText.trim().split('\n');
+                    return lines.map(line => {
+                        const parts = line.split(',');
+                        if (parts.length === 3) {
+                            return {
+                                period: parts.trim(),
+                                color: parts.trim(),
+                                number: parseInt(parts.[span_0](start_span)[span_0](end_span)trim(), 10)
+                            };
+                        }
+                        return null;
+                    }).filter(Boolean);
+                },
+
+                // Tier 1 Models
+                getDeterministicPrediction(period) {
+                    const colorCode = period % 3;
+                    const number = period % 10;
+                    const colors =;
+                    return { color: colors[colorCode], number };
+                },
+                getWeightedRandomPrediction() {
+                    const rand = Math.random();
+                    let color;
+                    if (rand < 0.45) color = 'Red';
+                    else if (rand < 0.55) color = 'Green';
+                    else color = 'Violet';
+                    return { color, number: Math.floor(Math.random() * 10) };
+                },
+
+                // Tier 2 Analysis
+                analyzeHistory(history) {
+                    if (history.length < 5) return { hotColors:, streaks: {} };
+                    const recentHistory = history.slice(-20);
+                    const counts = recentHistory.reduce((acc, item) => {
+                        acc[item.color] = (acc[item.color] |
+
+| 0) + 1;
+                        return acc;
+                    }, {});
+                    
+                    const hotColors = Object.keys(counts).filter(color => counts[color] > (recentHistory.length / 3));
+                    
+                    let streak = { color: null, length: 0 };
+                    if (history.length > 1) {
+                        streak.color = history[history.length - 1].color;
+                        streak.length = 1;
+                        for (let i = history.length - 2; i >= 0; i--) {
+                            if (history[i].color === streak.color) {
+                                streak.length++;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    return { hotColors, streak };
+                },
+
+                // Tier 3 Integrated Prediction
+                getIntegratedPrediction(period, history) {
+                    const scores = { Red: 0, Green: 0, Violet: 0 };
+                    
+                    // Tier 2 Heuristics
+                    const analysis = this.analyzeHistory(history);
+                    if (analysis.hotColors.includes('Red')) scores.Red += 10;
+                    if (analysis.hotColors.includes('Green')) scores.Green += 10;
+                    if (analysis.hotColors.includes('Violet')) scores.Violet += 10;
+
+                    if (analysis.streak && analysis.streak.length >= 3) {
+                        scores[analysis.streak.color] += 15;
+                    }
+
+                    // Tier 1 Models
+                    const deterministic = this.getDeterministicPrediction(period);
+                    scores[deterministic.color] += 5;
+
+                    const random = this.getWeightedRandomPrediction();
+                    scores[random.color] += 2;
+
+                    // Finalization
+                    const winner = Object.keys(scores).reduce((a, b) => scores[a] > scores[b]? a : b);
+                    const totalScore = Object.values(scores).reduce((sum, val) => sum + val, 1); // Add 1 to avoid division by zero
+                    const confidence = (scores[winner] / totalScore) * 100;
+
+                    return {
+                        prediction: { color: winner, number: deterministic.number },
+                        confidence: Math.min(99, confidence + 15) // Boost confidence for effect
+                    };
+                }
+            };
+
+            // --- MAIN APP FLOW ---
+            initiateBtn.addEventListener('click', async () => {
+                const period = parseInt(periodInput.value, 10);
+                if (isNaN(period)) {
+                    alert('Please enter a valid Target Period Number.');
+                    return;
+                }
+
+                state.history = predictionEngine.parseHistory(historyInput.value);
+
+                uiController.switchView('terminal');
+                
+                // Run prediction in parallel with animation
+                const predictionPromise = new Promise(resolve => {
+                    setTimeout(() => {
+                        const result = predictionEngine.getIntegratedPrediction(period, state.history);
+                        resolve(result);
+                    }, 5000); // Simulate time for analysis
+                });
+
+                await terminalAnimator.runAnimation();
+                
+                const { prediction, confidence } = await predictionPromise;
+
+                uiController.renderResults(prediction, confidence, state.history);
+                uiController.switchView('results');
+            });
+        });
+    </script>
+</body>
+</html>
